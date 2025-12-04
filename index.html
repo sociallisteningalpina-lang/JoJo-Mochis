@@ -33,7 +33,10 @@
             .charts-section, .comments-section { padding: 20px; }
             .section-title { font-size: 1.5em; margin-bottom: 20px; text-align: center; color: #333; }
             .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
-            .chart-container { position: relative; height: 400px; } .chart-container.full-width { grid-column: 1 / -1; }
+            .chart-container { position: relative; height: 400px; } 
+            .chart-container.full-width { grid-column: 1 / -1; }
+            /* NUEVO: Gráfica de temas más grande */
+            .chart-container.topics-large { grid-column: 1 / -1; height: 600px; }
             .comment-item { margin-bottom: 10px; padding: 15px; border-radius: 8px; border-left: 5px solid; word-wrap: break-word; }
             .comment-positive { border-left-color: #28a745; background: #f0fff4; } .comment-negative { border-left-color: #dc3545; background: #fff5f5; } .comment-neutral { border-left-color: #ffc107; background: #fffbeb; }
             .comment-meta { margin-bottom: 8px; font-size: 0.9em; display: flex; justify-content: space-between; align-items: center; }
@@ -72,7 +75,7 @@
                 <div class="charts-grid">
                     <div class="chart-container"><canvas id="postCountChart"></canvas></div>
                     <div class="chart-container"><canvas id="sentimentChart"></canvas></div>
-                    <div class="chart-container"><canvas id="topicsChart"></canvas></div>
+                    <div class="chart-container topics-large"><canvas id="topicsChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="sentimentByTopicChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="dailyChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="hourlyChart"></canvas></div>
@@ -201,29 +204,44 @@
                         plugins: [doughnutLabelPlugin]
                     }),
                     topics: new Chart(document.getElementById('topicsChart'), { 
-                        type: 'doughnut',
+                        type: 'bar',
                         data: { labels: [], datasets: [{}] },
                         options: { 
                             responsive: true, 
                             maintainAspectRatio: false,
+                            indexAxis: 'y',
                             plugins: { 
-                                title: { display: true, text: 'Distribución por Temas' },
-                                legend: { display: true, position: 'bottom' },
+                                title: { display: true, text: 'Distribución por Temas', font: { size: 16 } },
+                                legend: { display: false },
                                 tooltip: { 
                                     enabled: true,
                                     callbacks: {
                                         label: function(context) {
-                                            const label = context.label || '';
-                                            const value = context.parsed;
-                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const value = context.parsed.x;
+                                            const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
                                             const percentage = ((value / total) * 100).toFixed(1);
-                                            return label + ': ' + value + ' (' + percentage + '%)';
+                                            return value + ' comentarios (' + percentage + '%)';
                                         }
                                     }
                                 }
-                            } 
-                        },
-                        plugins: [doughnutLabelPlugin]
+                            },
+                            scales: {
+                                x: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Número de Comentarios'
+                                    }
+                                },
+                                y: {
+                                    ticks: {
+                                        font: {
+                                            size: 11
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }),
                     sentimentByTopic: new Chart(document.getElementById('sentimentByTopicChart'), { type: 'bar', options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { title: { display: true, text: 'Sentimiento por Tema' }, datalabels: { display: false } } } }),
                     daily: new Chart(document.getElementById('dailyChart'), { type: 'bar', options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { title: { display: true, text: 'Volumen de Comentarios por Día' }, datalabels: { display: false } } } }),
@@ -430,19 +448,21 @@
                     charts.sentiment.data.datasets = [{ data: [sentimentCounts['Positivo']||0, sentimentCounts['Negativo']||0, sentimentCounts['Neutro']||0], backgroundColor: ['#28a745', '#dc3545', '#ffc107'] }]; 
                     charts.sentiment.update(); 
                     
-                    // Gráfico de pastel por temas
+                    // Gráfico de barras horizontales por temas (MEJORADO)
                     const topicCounts = filteredData.reduce((acc, curr) => { acc[curr.topic] = (acc[curr.topic] || 0) + 1; return acc; }, {}); 
                     const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]); 
                     const topicLabels = sortedTopics.map(d => d[0]);
                     const topicData = sortedTopics.map(d => d[1]);
                     
-                    // Paleta de colores para temas
-                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b', '#2ecc71', '#e84393'];
+                    // Paleta de colores expandida para temas
+                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b', '#2ecc71', '#e84393', '#0984e3', '#6c5ce7', '#00b894'];
                     
                     charts.topics.data.labels = topicLabels; 
                     charts.topics.data.datasets = [{ 
                         data: topicData, 
-                        backgroundColor: topicColors.slice(0, topicLabels.length) 
+                        backgroundColor: topicColors.slice(0, topicLabels.length),
+                        borderColor: '#fff',
+                        borderWidth: 1
                     }]; 
                     charts.topics.update(); 
                     
