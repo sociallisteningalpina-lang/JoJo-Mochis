@@ -20,6 +20,10 @@ def run_report_generation():
     try:
         df = pd.read_excel('Comentarios Campaña.xlsx')
         print("Archivo 'Comentarios Campaña.xlsx' cargado con éxito.")
+        print(f"📊 Total de filas en el Excel: {len(df)}")
+        print(f"📊 Columnas disponibles: {df.columns.tolist()}")
+        print(f"\n📊 Valores nulos por columna:")
+        print(df.isnull().sum())
     except FileNotFoundError:
         print("❌ ERROR: No se encontró el archivo 'Comentarios Campaña.xlsx'.")
         return
@@ -33,12 +37,19 @@ def run_report_generation():
         print("⚠️  Nota: Creando post_url_original desde post_url")
         df['post_url_original'] = df['post_url'].copy()
 
+    # Rellenar valores faltantes ANTES de filtrar
+    df['post_url'] = df['post_url'].fillna('Sin URL')
+    df['post_url_original'] = df['post_url_original'].fillna('Sin URL')
+    df['platform'] = df['platform'].fillna('Desconocida')
+
     # --- Lógica de listado de pautas ---
     all_unique_posts = df[['post_url', 'post_url_original', 'platform']].drop_duplicates(subset=['post_url']).copy()
-    all_unique_posts.dropna(subset=['post_url'], inplace=True)
 
-    df_comments = df.dropna(subset=['created_time_colombia', 'comment_text', 'post_url']).copy()
+    # CAMBIO CRÍTICO: Solo filtrar por los campos esenciales
+    df_comments = df.dropna(subset=['created_time_colombia', 'comment_text']).copy()
     df_comments.reset_index(drop=True, inplace=True)
+
+    print(f"\n✅ Total de comentarios válidos para análisis: {len(df_comments)}")
 
     comment_counts = df_comments.groupby('post_url').size().reset_index(name='comment_count')
 
@@ -58,7 +69,7 @@ def run_report_generation():
     
     all_posts_json = json.dumps(unique_posts.to_dict('records'))
 
-    print("Analizando sentimientos y temas...")
+    print("\n🔍 Analizando sentimientos y temas...")
     
     # Análisis de sentimientos
     sentiment_analyzer = create_analyzer(task="sentiment", lang="es")
@@ -82,10 +93,24 @@ def run_report_generation():
     
     # Mostrar metadata de la campaña (opcional)
     campaign_info = get_campaign_metadata()
-    print(f"Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
-    print(f"Categorías disponibles: {len(campaign_info['categories'])}")
+    print(f"\n📋 Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
+    print(f"📋 Categorías disponibles: {len(campaign_info['categories'])}")
     
-    print("Análisis completado.")
+    print("\n✅ Análisis de sentimientos y temas completado.")
+    
+    # Mostrar distribución de sentimientos
+    sentiment_dist = df_comments['sentimiento'].value_counts()
+    print(f"\n📊 Distribución de Sentimientos:")
+    for sentiment, count in sentiment_dist.items():
+        percentage = (count / len(df_comments) * 100)
+        print(f"   {sentiment}: {count} ({percentage:.1f}%)")
+    
+    # Mostrar top 5 temas
+    topic_dist = df_comments['tema'].value_counts().head(5)
+    print(f"\n📊 Top 5 Temas más mencionados:")
+    for topic, count in topic_dist.items():
+        percentage = (count / len(df_comments) * 100)
+        print(f"   {topic}: {count} ({percentage:.1f}%)")
 
     # Creamos el JSON para el dashboard
     df_for_json = df_comments[[
@@ -117,7 +142,7 @@ def run_report_generation():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel Interactivo de Campañas</title>
+        <title>Panel Interactivo de Campañas - JojoMochis</title>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -162,7 +187,7 @@ def run_report_generation():
 
         <div class="container">
             <div class="card">
-                <div class="header"><h1>📊 Panel Interactivo de Campañas</h1></div>
+                <div class="header"><h1>📊 Panel Interactivo - JojoMochis</h1></div>
                 <div class="filters">
                     <label for="startDate">Inicio:</label> <input type="date" id="startDate" value="{min_date}"> <input type="time" id="startTime" value="00:00">
                     <label for="endDate">Fin:</label> <input type="date" id="endDate" value="{max_date}"> <input type="time" id="endTime" value="23:59">
@@ -243,6 +268,9 @@ def run_report_generation():
             document.addEventListener('DOMContentLoaded', () => {{
                 const allData = JSON.parse(document.getElementById('data-store').textContent);
                 const allPostsData = JSON.parse(document.getElementById('posts-data-store').textContent);
+                
+                console.log('📊 Total de comentarios cargados:', allData.length);
+                console.log('📊 Total de pautas cargadas:', allPostsData.length);
                 
                 const startDateInput = document.getElementById('startDate'), startTimeInput = document.getElementById('startTime');
                 const endDateInput = document.getElementById('endDate'), endTimeInput = document.getElementById('endTime');
@@ -434,6 +462,8 @@ def run_report_generation():
                         filteredData = filteredData.filter(d => d.topic === selectedTopic);
                     }}
                     
+                    console.log('📊 Comentarios después de filtros:', filteredData.length);
+                    
                     updateStats(filteredData, postsToShow.length);
                     updateCharts(allPostsData, filteredData);
                     updateCommentsList(filteredData);
@@ -545,7 +575,7 @@ def run_report_generation():
                     const topicData = sortedTopics.map(d => d[1]);
                     
                     // Paleta de colores para temas
-                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b'];
+                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b', '#2ecc71', '#e84393'];
                     
                     charts.topics.data.labels = topicLabels; 
                     charts.topics.data.datasets = [{{ 
@@ -621,10 +651,11 @@ def run_report_generation():
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
-    print(f"✅ Panel interactivo mejorado generado con éxito. Se guardó como '{report_filename}'.")
+    print(f"\n✅ Panel interactivo generado con éxito. Se guardó como '{report_filename}'.")
+    print(f"✅ Total de comentarios procesados: {len(df_comments)}")
+    print(f"✅ Total de pautas únicas: {len(unique_posts)}")
 
 
 if __name__ == "__main__":
     run_report_generation()
-
 
