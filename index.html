@@ -4,7 +4,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel Interactivo de Campañas</title>
+        <title>Panel Interactivo de Campañas - JojoMochis</title>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -49,7 +49,7 @@
 
         <div class="container">
             <div class="card">
-                <div class="header"><h1>📊 Panel Interactivo de Campañas</h1></div>
+                <div class="header"><h1>📊 Panel Interactivo - JojoMochis</h1></div>
                 <div class="filters">
                     <label for="startDate">Inicio:</label> <input type="date" id="startDate" value="2025-11-20"> <input type="time" id="startTime" value="00:00">
                     <label for="endDate">Fin:</label> <input type="date" id="endDate" value="2025-12-04"> <input type="time" id="endTime" value="23:59">
@@ -130,6 +130,9 @@
             document.addEventListener('DOMContentLoaded', () => {
                 const allData = JSON.parse(document.getElementById('data-store').textContent);
                 const allPostsData = JSON.parse(document.getElementById('posts-data-store').textContent);
+                
+                console.log('📊 Total de comentarios cargados:', allData.length);
+                console.log('📊 Total de pautas cargadas:', allPostsData.length);
                 
                 const startDateInput = document.getElementById('startDate'), startTimeInput = document.getElementById('startTime');
                 const endDateInput = document.getElementById('endDate'), endTimeInput = document.getElementById('endTime');
@@ -321,6 +324,8 @@
                         filteredData = filteredData.filter(d => d.topic === selectedTopic);
                     }
                     
+                    console.log('📊 Comentarios después de filtros:', filteredData.length);
+                    
                     updateStats(filteredData, postsToShow.length);
                     updateCharts(allPostsData, filteredData);
                     updateCommentsList(filteredData);
@@ -432,7 +437,7 @@
                     const topicData = sortedTopics.map(d => d[1]);
                     
                     // Paleta de colores para temas
-                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b'];
+                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b', '#2ecc71', '#e84393'];
                     
                     charts.topics.data.labels = topicLabels; 
                     charts.topics.data.datasets = [{ 
