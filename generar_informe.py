@@ -20,10 +20,6 @@ def run_report_generation():
     try:
         df = pd.read_excel('Comentarios Campaña.xlsx')
         print("Archivo 'Comentarios Campaña.xlsx' cargado con éxito.")
-        print(f"📊 Total de filas en el Excel: {len(df)}")
-        print(f"📊 Columnas disponibles: {df.columns.tolist()}")
-        print(f"\n📊 Valores nulos por columna:")
-        print(df.isnull().sum())
     except FileNotFoundError:
         print("❌ ERROR: No se encontró el archivo 'Comentarios Campaña.xlsx'.")
         return
@@ -37,19 +33,12 @@ def run_report_generation():
         print("⚠️  Nota: Creando post_url_original desde post_url")
         df['post_url_original'] = df['post_url'].copy()
 
-    # Rellenar valores faltantes ANTES de filtrar
-    df['post_url'] = df['post_url'].fillna('Sin URL')
-    df['post_url_original'] = df['post_url_original'].fillna('Sin URL')
-    df['platform'] = df['platform'].fillna('Desconocida')
-
     # --- Lógica de listado de pautas ---
     all_unique_posts = df[['post_url', 'post_url_original', 'platform']].drop_duplicates(subset=['post_url']).copy()
+    all_unique_posts.dropna(subset=['post_url'], inplace=True)
 
-    # CAMBIO CRÍTICO: Solo filtrar por los campos esenciales
-    df_comments = df.dropna(subset=['created_time_colombia', 'comment_text']).copy()
+    df_comments = df.dropna(subset=['created_time_colombia', 'comment_text', 'post_url']).copy()
     df_comments.reset_index(drop=True, inplace=True)
-
-    print(f"\n✅ Total de comentarios válidos para análisis: {len(df_comments)}")
 
     comment_counts = df_comments.groupby('post_url').size().reset_index(name='comment_count')
 
@@ -69,7 +58,7 @@ def run_report_generation():
     
     all_posts_json = json.dumps(unique_posts.to_dict('records'))
 
-    print("\n🔍 Analizando sentimientos y temas...")
+    print("Analizando sentimientos y temas...")
     
     # Análisis de sentimientos
     sentiment_analyzer = create_analyzer(task="sentiment", lang="es")
@@ -93,24 +82,10 @@ def run_report_generation():
     
     # Mostrar metadata de la campaña (opcional)
     campaign_info = get_campaign_metadata()
-    print(f"\n📋 Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
-    print(f"📋 Categorías disponibles: {len(campaign_info['categories'])}")
+    print(f"Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
+    print(f"Categorías disponibles: {len(campaign_info['categories'])}")
     
-    print("\n✅ Análisis de sentimientos y temas completado.")
-    
-    # Mostrar distribución de sentimientos
-    sentiment_dist = df_comments['sentimiento'].value_counts()
-    print(f"\n📊 Distribución de Sentimientos:")
-    for sentiment, count in sentiment_dist.items():
-        percentage = (count / len(df_comments) * 100)
-        print(f"   {sentiment}: {count} ({percentage:.1f}%)")
-    
-    # Mostrar top 5 temas
-    topic_dist = df_comments['tema'].value_counts().head(5)
-    print(f"\n📊 Top 5 Temas más mencionados:")
-    for topic, count in topic_dist.items():
-        percentage = (count / len(df_comments) * 100)
-        print(f"   {topic}: {count} ({percentage:.1f}%)")
+    print("Análisis completado.")
 
     # Creamos el JSON para el dashboard
     df_for_json = df_comments[[
@@ -142,7 +117,7 @@ def run_report_generation():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel Interactivo de Campañas - JojoMochis</title>
+        <title>Panel Interactivo de Campañas</title>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -171,10 +146,7 @@ def run_report_generation():
             .charts-section, .comments-section {{ padding: 20px; }}
             .section-title {{ font-size: 1.5em; margin-bottom: 20px; text-align: center; color: #333; }}
             .charts-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }}
-            .chart-container {{ position: relative; height: 400px; }} 
-            .chart-container.full-width {{ grid-column: 1 / -1; }}
-            /* NUEVO: Gráfica de temas más grande */
-            .chart-container.topics-large {{ grid-column: 1 / -1; height: 600px; }}
+            .chart-container {{ position: relative; height: 400px; }} .chart-container.full-width {{ grid-column: 1 / -1; }}
             .comment-item {{ margin-bottom: 10px; padding: 15px; border-radius: 8px; border-left: 5px solid; word-wrap: break-word; }}
             .comment-positive {{ border-left-color: #28a745; background: #f0fff4; }} .comment-negative {{ border-left-color: #dc3545; background: #fff5f5; }} .comment-neutral {{ border-left-color: #ffc107; background: #fffbeb; }}
             .comment-meta {{ margin-bottom: 8px; font-size: 0.9em; display: flex; justify-content: space-between; align-items: center; }}
@@ -190,7 +162,7 @@ def run_report_generation():
 
         <div class="container">
             <div class="card">
-                <div class="header"><h1>📊 Panel Interactivo - JojoMochis</h1></div>
+                <div class="header"><h1>📊 Panel Interactivo de Campañas</h1></div>
                 <div class="filters">
                     <label for="startDate">Inicio:</label> <input type="date" id="startDate" value="{min_date}"> <input type="time" id="startTime" value="00:00">
                     <label for="endDate">Fin:</label> <input type="date" id="endDate" value="{max_date}"> <input type="time" id="endTime" value="23:59">
@@ -213,7 +185,7 @@ def run_report_generation():
                 <div class="charts-grid">
                     <div class="chart-container"><canvas id="postCountChart"></canvas></div>
                     <div class="chart-container"><canvas id="sentimentChart"></canvas></div>
-                    <div class="chart-container topics-large"><canvas id="topicsChart"></canvas></div>
+                    <div class="chart-container"><canvas id="topicsChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="sentimentByTopicChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="dailyChart"></canvas></div>
                     <div class="chart-container full-width"><canvas id="hourlyChart"></canvas></div>
@@ -271,9 +243,6 @@ def run_report_generation():
             document.addEventListener('DOMContentLoaded', () => {{
                 const allData = JSON.parse(document.getElementById('data-store').textContent);
                 const allPostsData = JSON.parse(document.getElementById('posts-data-store').textContent);
-                
-                console.log('📊 Total de comentarios cargados:', allData.length);
-                console.log('📊 Total de pautas cargadas:', allPostsData.length);
                 
                 const startDateInput = document.getElementById('startDate'), startTimeInput = document.getElementById('startTime');
                 const endDateInput = document.getElementById('endDate'), endTimeInput = document.getElementById('endTime');
@@ -342,44 +311,29 @@ def run_report_generation():
                         plugins: [doughnutLabelPlugin]
                     }}),
                     topics: new Chart(document.getElementById('topicsChart'), {{ 
-                        type: 'bar',
+                        type: 'doughnut',
                         data: {{ labels: [], datasets: [{{}}] }},
                         options: {{ 
                             responsive: true, 
                             maintainAspectRatio: false,
-                            indexAxis: 'y',
                             plugins: {{ 
-                                title: {{ display: true, text: 'Distribución por Temas', font: {{ size: 16 }} }},
-                                legend: {{ display: false }},
+                                title: {{ display: true, text: 'Distribución por Temas' }},
+                                legend: {{ display: true, position: 'bottom' }},
                                 tooltip: {{ 
                                     enabled: true,
                                     callbacks: {{
                                         label: function(context) {{
-                                            const value = context.parsed.x;
-                                            const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                            const label = context.label || '';
+                                            const value = context.parsed;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                             const percentage = ((value / total) * 100).toFixed(1);
-                                            return value + ' comentarios (' + percentage + '%)';
+                                            return label + ': ' + value + ' (' + percentage + '%)';
                                         }}
                                     }}
                                 }}
-                            }},
-                            scales: {{
-                                x: {{
-                                    beginAtZero: true,
-                                    title: {{
-                                        display: true,
-                                        text: 'Número de Comentarios'
-                                    }}
-                                }},
-                                y: {{
-                                    ticks: {{
-                                        font: {{
-                                            size: 11
-                                        }}
-                                    }}
-                                }}
-                            }}
-                        }}
+                            }} 
+                        }},
+                        plugins: [doughnutLabelPlugin]
                     }}),
                     sentimentByTopic: new Chart(document.getElementById('sentimentByTopicChart'), {{ type: 'bar', options: {{ responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: {{ x: {{ stacked: true }}, y: {{ stacked: true }} }}, plugins: {{ title: {{ display: true, text: 'Sentimiento por Tema' }}, datalabels: {{ display: false }} }} }} }}),
                     daily: new Chart(document.getElementById('dailyChart'), {{ type: 'bar', options: {{ responsive: true, maintainAspectRatio: false, scales: {{ x: {{ stacked: true }}, y: {{ stacked: true }} }}, plugins: {{ title: {{ display: true, text: 'Volumen de Comentarios por Día' }}, datalabels: {{ display: false }} }} }} }}),
@@ -393,39 +347,56 @@ def run_report_generation():
                 let commentsSentimentFilter = 'Todos';
 
                 const updatePostLinks = () => {{
+                    const startFilter = `${{startDateInput.value}}T${{startTimeInput.value}}:00`;
+                    const endFilter = `${{endDateInput.value}}T${{endTimeInput.value}}:59`;
                     const selectedPlatform = platformFilter.value;
+                    const selectedPost = postFilter.value;
                     const selectedTopic = topicFilter.value;
                     
-                    // Filtrar pautas por plataforma
-                    let postsToShow = (selectedPlatform === 'Todas') ? allPostsData : allPostsData.filter(p => p.platform === selectedPlatform);
+                    // Filtrar comentarios según los criterios activos (fecha, plataforma, pauta, tema)
+                    let filteredComments = allData.filter(d => d.date >= startFilter && d.date <= endFilter);
                     
-                    // Filtrar pautas por tema
-                    if (selectedTopic !== 'Todos') {{
-                        const urlsWithTopic = new Set(
-                            allData.filter(d => d.topic === selectedTopic).map(d => d.post_url)
-                        );
-                        postsToShow = postsToShow.filter(p => urlsWithTopic.has(p.post_url));
-                        
-                        // Recalcular conteos de comentarios solo para el tema seleccionado
-                        postsToShow = postsToShow.map(p => {{
-                            const topicComments = allData.filter(d => d.post_url === p.post_url && d.topic === selectedTopic);
-                            return {{
-                                ...p,
-                                comment_count: topicComments.length,
-                                original_count: p.comment_count
-                            }};
-                        }});
-                        
-                        // Re-ordenar por conteo de comentarios del tema
-                        postsToShow.sort((a, b) => b.comment_count - a.comment_count);
+                    // Aplicar filtros adicionales
+                    if (selectedPost !== 'Todas') {{
+                        filteredComments = filteredComments.filter(d => d.post_url === selectedPost);
+                    }} else if (selectedPlatform !== 'Todas') {{
+                        filteredComments = filteredComments.filter(d => d.platform === selectedPlatform);
                     }}
+                    
+                    if (selectedTopic !== 'Todos') {{
+                        filteredComments = filteredComments.filter(d => d.topic === selectedTopic);
+                    }}
+                    
+                    // Determinar qué pautas mostrar según el filtro de pauta/plataforma
+                    let postsToShow = allPostsData;
+                    if (selectedPost !== 'Todas') {{
+                        postsToShow = allPostsData.filter(p => p.post_url === selectedPost);
+                    }} else if (selectedPlatform !== 'Todas') {{
+                        postsToShow = allPostsData.filter(p => p.platform === selectedPlatform);
+                    }}
+                    
+                    // Recalcular conteos de comentarios basados en los filtros aplicados
+                    postsToShow = postsToShow.map(p => {{
+                        const filteredCount = filteredComments.filter(d => d.post_url === p.post_url).length;
+                        return {{
+                            ...p,
+                            comment_count: filteredCount,
+                            original_count: p.comment_count
+                        }};
+                    }});
+                    
+                    // Filtrar pautas que no tienen comentarios con los filtros aplicados
+                    postsToShow = postsToShow.filter(p => p.comment_count > 0);
+                    
+                    // Re-ordenar por conteo de comentarios filtrados
+                    postsToShow.sort((a, b) => b.comment_count - a.comment_count);
                     
                     const tableDiv = document.getElementById('post-links-table');
                     const paginationDiv = document.getElementById('post-links-pagination');
                     tableDiv.innerHTML = ''; paginationDiv.innerHTML = '';
                     
                     if (postsToShow.length === 0) {{
-                        tableDiv.innerHTML = "<p style='text-align:center; padding:20px;'>No hay pautas con comentarios del tema seleccionado.</p>";
+                        tableDiv.innerHTML = "<p style='text-align:center; padding:20px;'>No hay pautas con comentarios que cumplan los filtros seleccionados.</p>";
                         return;
                     }}
 
@@ -436,8 +407,8 @@ def run_report_generation():
                     const paginatedPosts = postsToShow.slice(startIndex, startIndex + POST_LINKS_PER_PAGE);
 
                     let tableHTML = '<table><tr><th>Pauta</th><th>Comentarios';
-                    if (selectedTopic !== 'Todos') {{
-                        tableHTML += ' (Tema Seleccionado)';
+                    if (selectedTopic !== 'Todos' || startFilter !== `${{startDateInput.min}}T00:00:00` || endFilter !== `${{endDateInput.max}}T23:59:59` || selectedPost !== 'Todas') {{
+                        tableHTML += ' (Filtrados)';
                     }}
                     tableHTML += '</th><th>Enlace</th></tr>';
                     
@@ -479,8 +450,6 @@ def run_report_generation():
                     if (selectedTopic !== 'Todos') {{
                         filteredData = filteredData.filter(d => d.topic === selectedTopic);
                     }}
-                    
-                    console.log('📊 Comentarios después de filtros:', filteredData.length);
                     
                     updateStats(filteredData, postsToShow.length);
                     updateCharts(allPostsData, filteredData);
@@ -586,21 +555,19 @@ def run_report_generation():
                     charts.sentiment.data.datasets = [{{ data: [sentimentCounts['Positivo']||0, sentimentCounts['Negativo']||0, sentimentCounts['Neutro']||0], backgroundColor: ['#28a745', '#dc3545', '#ffc107'] }}]; 
                     charts.sentiment.update(); 
                     
-                    // Gráfico de barras horizontales por temas (MEJORADO)
+                    // Gráfico de pastel por temas
                     const topicCounts = filteredData.reduce((acc, curr) => {{ acc[curr.topic] = (acc[curr.topic] || 0) + 1; return acc; }}, {{}}); 
                     const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]); 
                     const topicLabels = sortedTopics.map(d => d[0]);
                     const topicData = sortedTopics.map(d => d[1]);
                     
-                    // Paleta de colores expandida para temas
-                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b', '#2ecc71', '#e84393', '#0984e3', '#6c5ce7', '#00b894'];
+                    // Paleta de colores para temas
+                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b'];
                     
                     charts.topics.data.labels = topicLabels; 
                     charts.topics.data.datasets = [{{ 
                         data: topicData, 
-                        backgroundColor: topicColors.slice(0, topicLabels.length),
-                        borderColor: '#fff',
-                        borderWidth: 1
+                        backgroundColor: topicColors.slice(0, topicLabels.length) 
                     }}]; 
                     charts.topics.update(); 
                     
@@ -652,12 +619,12 @@ def run_report_generation():
                 }};
 
                 platformFilter.addEventListener('change', () => {{ updatePostFilterOptions(); postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
-                postFilter.addEventListener('change', updateDashboard);
+                postFilter.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
                 topicFilter.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
-                startDateInput.addEventListener('change', updateDashboard); 
-                startTimeInput.addEventListener('change', updateDashboard);
-                endDateInput.addEventListener('change', updateDashboard); 
-                endTimeInput.addEventListener('change', updateDashboard);
+                startDateInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }}); 
+                startTimeInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                endDateInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }}); 
+                endTimeInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
                 
                 updatePostLinks();
                 updateDashboard();
@@ -671,9 +638,7 @@ def run_report_generation():
     with open(report_filename, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
-    print(f"\n✅ Panel interactivo generado con éxito. Se guardó como '{report_filename}'.")
-    print(f"✅ Total de comentarios procesados: {len(df_comments)}")
-    print(f"✅ Total de pautas únicas: {len(unique_posts)}")
+    print(f"✅ Panel interactivo mejorado generado con éxito. Se guardó como '{report_filename}'.")
 
 
 if __name__ == "__main__":
