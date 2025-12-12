@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 # Importar el clasificador de temas desde config
+# Asegúrate de que la carpeta 'config' y el archivo 'topic_classifier.py' existan
 sys.path.insert(0, str(Path(__file__).parent / "config"))
 from topic_classifier import create_topic_classifier, get_campaign_metadata
 
@@ -81,9 +82,12 @@ def run_report_generation():
     df_comments['tema'] = df_comments['comment_text'].apply(topic_classifier)
     
     # Mostrar metadata de la campaña (opcional)
-    campaign_info = get_campaign_metadata()
-    print(f"Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
-    print(f"Categorías disponibles: {len(campaign_info['categories'])}")
+    try:
+        campaign_info = get_campaign_metadata()
+        print(f"Usando clasificador: {campaign_info['campaign_name']} v{campaign_info['version']}")
+        print(f"Categorías disponibles: {len(campaign_info['categories'])}")
+    except:
+        print("Metadata de campaña no disponible, continuando...")
     
     print("Análisis completado.")
 
@@ -111,7 +115,8 @@ def run_report_generation():
     for url, label in post_labels.items():
         post_filter_options += f'<option value="{url}">{label}</option>'
 
-   html_content = f"""
+    # --- CONSTRUCCIÓN DEL HTML ---
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="es">
     <head>
@@ -147,11 +152,10 @@ def run_report_generation():
             .section-title {{ font-size: 1.5em; margin-bottom: 20px; text-align: center; color: #333; }}
             .charts-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }}
             
-            /* --- INICIO CAMBIOS DE ESTILO --- */
+            /* ESTILO PARA GRÁFICA GRANDE */
             .chart-container {{ position: relative; height: 400px; }} 
             .chart-container.full-width {{ grid-column: 1 / -1; }}
             .chart-container.large {{ height: 700px; }} /* Aumentamos la altura para la gráfica de pastel */
-            /* --- FIN CAMBIOS DE ESTILO --- */
 
             .comment-item {{ margin-bottom: 10px; padding: 15px; border-radius: 8px; border-left: 5px solid; word-wrap: break-word; }}
             .comment-positive {{ border-left-color: #28a745; background: #f0fff4; }} .comment-negative {{ border-left-color: #dc3545; background: #fff5f5; }} .comment-neutral {{ border-left-color: #ffc107; background: #fffbeb; }}
@@ -209,5 +213,328 @@ def run_report_generation():
         </div>
         
         <script>
-            // ... (resto del código JavaScript sin cambios) ...
-"""
+            // Plugin personalizado para etiquetas en donut
+            const doughnutLabelPlugin = {{
+                id: 'doughnutLabel',
+                afterDatasetsDraw(chart, args, options) {{
+                    const {{ ctx, data }} = chart;
+                    
+                    chart.data.datasets.forEach((dataset, datasetIndex) => {{
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        if (!meta.hidden) {{
+                            meta.data.forEach((element, index) => {{
+                                const value = dataset.data[index];
+                                const total = dataset.data.reduce((acc, val) => acc + val, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                
+                                const {{ x, y }} = element.tooltipPosition();
+                                
+                                if (percentage > 3) {{ // Solo mostrar si es > 3% para no saturar
+                                    ctx.save();
+                                    ctx.fillStyle = '#fff';
+                                    ctx.font = 'bold 12px Arial';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                                    ctx.shadowBlur = 4;
+                                    ctx.fillText(value, x, y - 8);
+                                    ctx.fillText(`(${{percentage}}%)`, x, y + 8);
+                                    ctx.restore();
+                                }}
+                            }});
+                        }}
+                    }});
+                }}
+            }};
+            
+            document.addEventListener('DOMContentLoaded', () => {{
+                const allData = JSON.parse(document.getElementById('data-store').textContent);
+                const allPostsData = JSON.parse(document.getElementById('posts-data-store').textContent);
+                
+                const startDateInput = document.getElementById('startDate'), startTimeInput = document.getElementById('startTime');
+                const endDateInput = document.getElementById('endDate'), endTimeInput = document.getElementById('endTime');
+                const platformFilter = document.getElementById('platformFilter'), postFilter = document.getElementById('postFilter');
+                const topicFilter = document.getElementById('topicFilter');
+
+                const uniqueTopics = [...new Set(allData.map(d => d.topic))].sort();
+                uniqueTopics.forEach(topic => {{
+                    const option = document.createElement('option');
+                    option.value = topic;
+                    option.textContent = topic;
+                    topicFilter.appendChild(option);
+                }});
+
+                const charts = {{}};
+                const commonOptions = {{ responsive: true, maintainAspectRatio: false }};
+                
+                Object.assign(charts, {{
+                    postCount: new Chart(document.getElementById('postCountChart'), {{ 
+                        type: 'doughnut',
+                        data: {{ labels: [], datasets: [{{}}] }},
+                        options: {{ ...commonOptions, plugins: {{ title: {{ display: true, text: 'Pautas por Red Social' }}, legend: {{ position: 'bottom' }} }} }},
+                        plugins: [doughnutLabelPlugin]
+                    }}),
+                    sentiment: new Chart(document.getElementById('sentimentChart'), {{ 
+                        type: 'doughnut',
+                        data: {{ labels: [], datasets: [{{}}] }},
+                        options: {{ ...commonOptions, plugins: {{ title: {{ display: true, text: 'Distribución de Sentimientos' }}, legend: {{ position: 'bottom' }} }} }},
+                        plugins: [doughnutLabelPlugin]
+                    }}),
+                    topics: new Chart(document.getElementById('topicsChart'), {{ 
+                        type: 'doughnut',
+                        data: {{ labels: [], datasets: [{{}}] }},
+                        options: {{ ...commonOptions, plugins: {{ title: {{ display: true, text: 'Distribución por Temas' }}, legend: {{ position: 'right' }} }} }},
+                        plugins: [doughnutLabelPlugin]
+                    }}),
+                    sentimentByTopic: new Chart(document.getElementById('sentimentByTopicChart'), {{ type: 'bar', options: {{ ...commonOptions, indexAxis: 'y', scales: {{ x: {{ stacked: true }}, y: {{ stacked: true }} }}, plugins: {{ title: {{ display: true, text: 'Sentimiento por Tema' }} }} }} }}),
+                    daily: new Chart(document.getElementById('dailyChart'), {{ type: 'bar', options: {{ ...commonOptions, scales: {{ x: {{ stacked: true }}, y: {{ stacked: true }} }}, plugins: {{ title: {{ display: true, text: 'Comentarios por Día' }} }} }} }}),
+                    hourly: new Chart(document.getElementById('hourlyChart'), {{ type: 'bar', options: {{ ...commonOptions, scales: {{ x: {{ stacked: true }}, y: {{ stacked: true, position: 'left' }}, y1: {{ position: 'right', grid: {{ drawOnChartArea: false }} }} }}, plugins: {{ title: {{ display: true, text: 'Comentarios por Hora' }} }} }} }})
+                }});
+
+                let postLinksCurrentPage = 1;
+                const POST_LINKS_PER_PAGE = 5;
+                let commentsCurrentPage = 1;
+                const COMMENTS_PER_PAGE = 10;
+                let commentsSentimentFilter = 'Todos';
+
+                const updatePostLinks = () => {{
+                    const startFilter = `${{startDateInput.value}}T${{startTimeInput.value}}:00`;
+                    const endFilter = `${{endDateInput.value}}T${{endTimeInput.value}}:59`;
+                    const selectedPlatform = platformFilter.value;
+                    const selectedPost = postFilter.value;
+                    const selectedTopic = topicFilter.value;
+                    
+                    let filteredComments = allData.filter(d => d.date >= startFilter && d.date <= endFilter);
+                    
+                    if (selectedPost !== 'Todas') filteredComments = filteredComments.filter(d => d.post_url === selectedPost);
+                    else if (selectedPlatform !== 'Todas') filteredComments = filteredComments.filter(d => d.platform === selectedPlatform);
+                    
+                    if (selectedTopic !== 'Todos') filteredComments = filteredComments.filter(d => d.topic === selectedTopic);
+                    
+                    let postsToShow = allPostsData;
+                    if (selectedPost !== 'Todas') postsToShow = allPostsData.filter(p => p.post_url === selectedPost);
+                    else if (selectedPlatform !== 'Todas') postsToShow = allPostsData.filter(p => p.platform === selectedPlatform);
+                    
+                    postsToShow = postsToShow.map(p => {{
+                        const filteredCount = filteredComments.filter(d => d.post_url === p.post_url).length;
+                        return {{ ...p, comment_count: filteredCount }};
+                    }}).filter(p => p.comment_count > 0).sort((a, b) => b.comment_count - a.comment_count);
+                    
+                    const tableDiv = document.getElementById('post-links-table');
+                    const paginationDiv = document.getElementById('post-links-pagination');
+                    tableDiv.innerHTML = ''; paginationDiv.innerHTML = '';
+                    
+                    if (postsToShow.length === 0) {{
+                        tableDiv.innerHTML = "<p style='text-align:center; padding:20px;'>No hay datos con estos filtros.</p>";
+                        return;
+                    }}
+
+                    const totalPages = Math.ceil(postsToShow.length / POST_LINKS_PER_PAGE);
+                    if (postLinksCurrentPage > totalPages) postLinksCurrentPage = 1;
+
+                    const startIndex = (postLinksCurrentPage - 1) * POST_LINKS_PER_PAGE;
+                    const paginatedPosts = postsToShow.slice(startIndex, startIndex + POST_LINKS_PER_PAGE);
+
+                    let tableHTML = '<table><tr><th>Pauta</th><th>Comentarios (Filtrados)</th><th>Enlace</th></tr>';
+                    paginatedPosts.forEach(p => {{
+                        const linkUrl = p.post_url_original || p.post_url;
+                        tableHTML += `<tr><td>${{p.post_label}}</td><td><b>${{p.comment_count}}</b></td><td><a href="${{linkUrl}}" target="_blank">Ver Pauta</a></td></tr>`;
+                    }});
+                    tableHTML += '</table>';
+                    tableDiv.innerHTML = tableHTML;
+
+                    if (totalPages > 1) {{
+                        paginationDiv.innerHTML = `<button id="prevPageBtn" ${{ (postLinksCurrentPage === 1) ? 'disabled' : '' }}>Anterior</button><span>Pg ${{postLinksCurrentPage}}/${{totalPages}}</span><button id="nextPageBtn" ${{ (postLinksCurrentPage === totalPages) ? 'disabled' : '' }}>Siguiente</button>`;
+                        document.getElementById('prevPageBtn')?.addEventListener('click', () => {{ if (postLinksCurrentPage > 1) {{ postLinksCurrentPage--; updatePostLinks(); }} }});
+                        document.getElementById('nextPageBtn')?.addEventListener('click', () => {{ if (postLinksCurrentPage < totalPages) {{ postLinksCurrentPage++; updatePostLinks(); }} }});
+                    }}
+                }};
+                
+                const updateDashboard = () => {{
+                    const startFilter = `${{startDateInput.value}}T${{startTimeInput.value}}:00`;
+                    const endFilter = `${{endDateInput.value}}T${{endTimeInput.value}}:59`;
+                    const selectedPlatform = platformFilter.value;
+                    const selectedPost = postFilter.value;
+                    const selectedTopic = topicFilter.value;
+                    
+                    let filteredData = allData.filter(d => d.date >= startFilter && d.date <= endFilter);
+                    let postsToShow = allPostsData;
+
+                    if (selectedPost !== 'Todas') {{
+                        filteredData = filteredData.filter(d => d.post_url === selectedPost);
+                        postsToShow = allPostsData.filter(p => p.post_url === selectedPost);
+                    }} else if (selectedPlatform !== 'Todas') {{
+                        filteredData = filteredData.filter(d => d.platform === selectedPlatform);
+                        postsToShow = allPostsData.filter(p => p.platform === selectedPlatform);
+                    }}
+
+                    if (selectedTopic !== 'Todos') {{
+                        filteredData = filteredData.filter(d => d.topic === selectedTopic);
+                    }}
+                    
+                    updateStats(filteredData, postsToShow.length);
+                    updateCharts(allPostsData, filteredData);
+                    updateCommentsList(filteredData);
+                }};
+                
+                const updateStats = (data, totalPosts) => {{
+                    const total = data.length;
+                    const sentiments = data.reduce((acc, curr) => {{ acc[curr.sentiment] = (acc[curr.sentiment] || 0) + 1; return acc; }}, {{}});
+                    const pos = sentiments['Positivo'] || 0;
+                    const neg = sentiments['Negativo'] || 0;
+                    const neu = sentiments['Neutro'] || 0;
+                    
+                    document.getElementById('stats-grid').innerHTML = `
+                        <div class="stat-card pautas"><div class="stat-number pautas-text">${{totalPosts}}</div><div>Pautas Activas</div></div>
+                        <div class="stat-card total"><div class="stat-number total-text">${{total}}</div><div>Comentarios</div></div>
+                        <div class="stat-card positive"><div class="stat-number positive-text">${{pos}}</div><div>Positivos (${{(total > 0 ? (pos / total * 100) : 0).toFixed(1)}}%)</div></div>
+                        <div class="stat-card negative"><div class="stat-number negative-text">${{neg}}</div><div>Negativos (${{(total > 0 ? (neg / total * 100) : 0).toFixed(1)}}%)</div></div>
+                        <div class="stat-card neutral"><div class="stat-number neutral-text">${{neu}}</div><div>Neutros (${{(total > 0 ? (neu / total * 100) : 0).toFixed(1)}}%)</div></div>
+                    `;
+                }};
+                
+                const updateCommentsList = (data) => {{
+                    const dataToShow = (commentsSentimentFilter === 'Todos') ? data : data.filter(d => d.sentiment === commentsSentimentFilter);
+                    dataToShow.sort((a, b) => b.date.localeCompare(a.date));
+
+                    const controlsDiv = document.getElementById('comments-controls');
+                    const listDiv = document.getElementById('comments-list');
+                    const paginationDiv = document.getElementById('comments-pagination');
+                    listDiv.innerHTML = ''; paginationDiv.innerHTML = '';
+                    
+                    controlsDiv.innerHTML = ['Todos', 'Positivo', 'Negativo', 'Neutro'].map(s => 
+                        `<button class="filter-btn ${{commentsSentimentFilter === s ? 'active' : ''}}" data-sentiment="${{s}}">${{s}}</button>`
+                    ).join('');
+                    
+                    controlsDiv.querySelectorAll('.filter-btn').forEach(btn => {{
+                        btn.addEventListener('click', (e) => {{
+                            commentsSentimentFilter = e.target.dataset.sentiment;
+                            commentsCurrentPage = 1;
+                            updateCommentsList(data);
+                        }});
+                    }});
+
+                    if (dataToShow.length === 0) {{
+                        listDiv.innerHTML = "<p style='text-align:center;'>No hay comentarios.</p>";
+                        return;
+                    }}
+
+                    const totalPages = Math.ceil(dataToShow.length / COMMENTS_PER_PAGE);
+                    if (commentsCurrentPage > totalPages) commentsCurrentPage = 1;
+
+                    const startIndex = (commentsCurrentPage - 1) * COMMENTS_PER_PAGE;
+                    const paginatedComments = dataToShow.slice(startIndex, startIndex + COMMENTS_PER_PAGE);
+
+                    const sentimentToCss = {{ 'Positivo': 'positive', 'Negativo': 'negative', 'Neutro': 'neutral' }};
+                    let listHtml = '';
+                    paginatedComments.forEach(d => {{
+                        const escapedComment = d.comment.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                        const formattedDate = new Date(d.date).toLocaleString('es-CO');
+                        listHtml += `<div class="comment-item comment-${{sentimentToCss[d.sentiment]}}">
+                                        <div class="comment-meta">
+                                            <strong>[${{d.sentiment.toUpperCase()}}] (${{d.topic}})</strong>
+                                            <span class="comment-date">${{formattedDate}}</span>
+                                        </div>
+                                        <div>${{escapedComment}}</div>
+                                    </div>`;
+                    }});
+                    listDiv.innerHTML = listHtml;
+
+                    if (totalPages > 1) {{
+                        paginationDiv.innerHTML = `<button id="prevComBtn" ${{ (commentsCurrentPage === 1) ? 'disabled' : '' }}>Anterior</button><span>Pg ${{commentsCurrentPage}}/${{totalPages}}</span><button id="nextComBtn" ${{ (commentsCurrentPage === totalPages) ? 'disabled' : '' }}>Siguiente</button>`;
+                        document.getElementById('prevComBtn')?.addEventListener('click', () => {{ if (commentsCurrentPage > 1) {{ commentsCurrentPage--; updateCommentsList(data); }} }});
+                        document.getElementById('nextComBtn')?.addEventListener('click', () => {{ if (commentsCurrentPage < totalPages) {{ commentsCurrentPage++; updateCommentsList(data); }} }});
+                    }}
+                }};
+
+                const updateCharts = (postsData, filteredData) => {{ 
+                    const postCounts = postsData.reduce((acc, curr) => {{ acc[curr.platform] = (acc[curr.platform] || 0) + 1; return acc; }}, {{}}); 
+                    const postCountLabels = Object.keys(postCounts); 
+                    charts.postCount.data.labels = postCountLabels; 
+                    charts.postCount.data.datasets = [{{ data: postCountLabels.map(p => postCounts[p]), backgroundColor: ['#007bff', '#6f42c1', '#dc3545', '#ffc107', '#28a745'] }}]; 
+                    charts.postCount.update(); 
+                    
+                    const sentimentCounts = filteredData.reduce((acc, curr) => {{ acc[curr.sentiment] = (acc[curr.sentiment] || 0) + 1; return acc; }}, {{}}); 
+                    charts.sentiment.data.labels = ['Positivo', 'Negativo', 'Neutro']; 
+                    charts.sentiment.data.datasets = [{{ data: [sentimentCounts['Positivo']||0, sentimentCounts['Negativo']||0, sentimentCounts['Neutro']||0], backgroundColor: ['#28a745', '#dc3545', '#ffc107'] }}]; 
+                    charts.sentiment.update(); 
+                    
+                    const topicCounts = filteredData.reduce((acc, curr) => {{ acc[curr.topic] = (acc[curr.topic] || 0) + 1; return acc; }}, {{}}); 
+                    const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]); 
+                    const topicLabels = sortedTopics.map(d => d[0]);
+                    const topicData = sortedTopics.map(d => d[1]);
+                    const topicColors = ['#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#95a5a6', '#e67e22', '#16a085', '#c0392b'];
+                    
+                    charts.topics.data.labels = topicLabels; 
+                    charts.topics.data.datasets = [{{ data: topicData, backgroundColor: topicColors.slice(0, topicLabels.length) }}]; 
+                    charts.topics.update(); 
+                    
+                    const sbtCounts = filteredData.reduce((acc, curr) => {{ if (!acc[curr.topic]) acc[curr.topic] = {{ Positivo: 0, Negativo: 0, Neutro: 0 }}; acc[curr.topic][curr.sentiment]++; return acc; }}, {{}}); 
+                    const sbtLabels = Object.keys(sbtCounts).sort((a,b) => (sbtCounts[b].Positivo + sbtCounts[b].Negativo + sbtCounts[b].Neutro) - (sbtCounts[a].Positivo + sbtCounts[a].Negativo + sbtCounts[a].Neutro)); 
+                    charts.sentimentByTopic.data.labels = sbtLabels; 
+                    charts.sentimentByTopic.data.datasets = [ 
+                        {{ label: 'Positivo', data: sbtLabels.map(l => sbtCounts[l].Positivo), backgroundColor: '#28a745' }}, 
+                        {{ label: 'Negativo', data: sbtLabels.map(l => sbtCounts[l].Negativo), backgroundColor: '#dc3545' }}, 
+                        {{ label: 'Neutro', data: sbtLabels.map(l => sbtCounts[l].Neutro), backgroundColor: '#ffc107' }} 
+                    ]; 
+                    charts.sentimentByTopic.update(); 
+                    
+                    const dailyCounts = filteredData.reduce((acc, curr) => {{ const day = curr.date.substring(0, 10); if (!acc[day]) {{ acc[day] = {{ Positivo: 0, Negativo: 0, Neutro: 0 }}; }} acc[day][curr.sentiment]++; return acc; }}, {{}}); 
+                    const sortedDays = Object.keys(dailyCounts).sort(); 
+                    charts.daily.data.labels = sortedDays.map(d => new Date(d+'T00:00:00').toLocaleDateString('es-CO')); 
+                    charts.daily.data.datasets = [ 
+                        {{ label: 'Positivo', data: sortedDays.map(d => dailyCounts[d].Positivo), backgroundColor: '#28a745' }}, 
+                        {{ label: 'Negativo', data: sortedDays.map(d => dailyCounts[d].Negativo), backgroundColor: '#dc3545' }}, 
+                        {{ label: 'Neutro', data: sortedDays.map(d => dailyCounts[d].Neutro), backgroundColor: '#ffc107' }} 
+                    ]; 
+                    charts.daily.update(); 
+                    
+                    const hourlyCounts = filteredData.reduce((acc, curr) => {{ const hour = curr.date.substring(0, 13) + ':00:00'; if (!acc[hour]) acc[hour] = {{ Positivo: 0, Negativo: 0, Neutro: 0, Total: 0 }}; acc[hour][curr.sentiment]++; acc[hour].Total++; return acc; }}, {{}}); 
+                    const sortedHours = Object.keys(hourlyCounts).sort(); 
+                    let cumulative = 0; 
+                    const cumulativeData = sortedHours.map(h => {{ cumulative += hourlyCounts[h].Total; return cumulative; }}); 
+                    charts.hourly.data.labels = sortedHours.map(h => new Date(h).toLocaleString('es-CO', {{ day: '2-digit', hour: '2-digit' }})); 
+                    charts.hourly.data.datasets = [ 
+                        {{ label: 'Positivo', data: sortedHours.map(h => hourlyCounts[h].Positivo), backgroundColor: '#28a745', yAxisID: 'y' }}, 
+                        {{ label: 'Negativo', data: sortedHours.map(h => hourlyCounts[h].Negativo), backgroundColor: '#dc3545', yAxisID: 'y' }}, 
+                        {{ label: 'Neutro', data: sortedHours.map(h => hourlyCounts[h].Neutro), backgroundColor: '#ffc107', yAxisID: 'y' }}, 
+                        {{ label: 'Acumulado', type: 'line', data: cumulativeData, borderColor: '#007bff', yAxisID: 'y1' }} 
+                    ]; 
+                    charts.hourly.update(); 
+                }};
+                
+                const updatePostFilterOptions = () => {{ 
+                    const selectedPlatform = platformFilter.value; 
+                    const currentPostSelection = postFilter.value; 
+                    let postsToShow = (selectedPlatform === 'Todas') ? allPostsData : allPostsData.filter(p => p.platform === selectedPlatform); 
+                    postFilter.innerHTML = '<option value="Todas">Ver Todas las Pautas</option>'; 
+                    postsToShow.forEach(p => {{ postFilter.innerHTML += `<option value="${{p.post_url}}">${{p.post_label}}</option>`; }}); 
+                    if (postsToShow.some(p => p.post_url === currentPostSelection)) {{ postFilter.value = currentPostSelection; }} 
+                    else {{ postFilter.value = 'Todas'; }} 
+                }};
+
+                platformFilter.addEventListener('change', () => {{ updatePostFilterOptions(); postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                postFilter.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                topicFilter.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                startDateInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }}); 
+                startTimeInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                endDateInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }}); 
+                endTimeInput.addEventListener('change', () => {{ postLinksCurrentPage = 1; updatePostLinks(); updateDashboard(); }});
+                
+                updatePostLinks();
+                updateDashboard();
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    
+    report_filename = 'index.html'
+    with open(report_filename, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    print(f"✅ Panel interactivo mejorado generado con éxito. Se guardó como '{report_filename}'.")
+
+
+if __name__ == "__main__":
+    run_report_generation()
